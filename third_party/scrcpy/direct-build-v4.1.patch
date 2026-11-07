@@ -1,0 +1,56 @@
+diff --git a/build.gradle b/build.gradle
+index 836455d..3ffd772 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -7,7 +7,7 @@ buildscript {
+         mavenCentral()
+     }
+     dependencies {
+-        classpath 'com.android.tools.build:gradle:9.1.0'
++        classpath 'com.android.tools.build:gradle:8.7.3'
+ 
+         // NOTE: Do not place your application dependencies here; they belong
+         // in the individual module build.gradle files
+diff --git a/server/build.gradle b/server/build.gradle
+index 0d70163..a637f46 100644
+--- a/server/build.gradle
++++ b/server/build.gradle
+@@ -2,11 +2,12 @@ apply plugin: 'com.android.application'
+ 
+ android {
+     namespace = 'com.genymobile.scrcpy'
+-    compileSdk = 36
++    compileSdk = 34
++    buildToolsVersion = '34.0.0'
+     defaultConfig {
+         applicationId = "com.genymobile.scrcpy"
+         minSdkVersion 21
+-        targetSdkVersion 36
++        targetSdkVersion 34
+         versionCode 40100
+         versionName "4.1"
+         testInstrumentationRunner = "android.support.test.runner.AndroidJUnitRunner"
+@@ -30,3 +31,11 @@ dependencies {
+ }
+ 
+ apply from: "$project.rootDir/config/android-checkstyle.gradle"
++
++tasks.withType(JavaCompile).configureEach {
++    options.fork = true
++    options.forkOptions.executable = new File(System.getProperty("java.home"), "bin/javac.exe").absolutePath
++    doFirst {
++        classpath = classpath.filter { it.name != "R.jar" }
++    }
++}
+diff --git a/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java b/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java
+index 5303924..7991b6a 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java
++++ b/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java
+@@ -27,6 +27,6 @@ public final class AndroidVersions {
+     public static final int API_32_ANDROID_12L = Build.VERSION_CODES.S_V2;
+     public static final int API_33_ANDROID_13 = Build.VERSION_CODES.TIRAMISU;
+     public static final int API_34_ANDROID_14 = Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
+-    public static final int API_35_ANDROID_15 = Build.VERSION_CODES.VANILLA_ICE_CREAM;
++    public static final int API_35_ANDROID_15 = 35;
+ 
+ }

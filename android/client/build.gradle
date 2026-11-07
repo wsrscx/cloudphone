@@ -1,0 +1,113 @@
+import java.util.Properties
+
+plugins {
+    id "com.android.application"
+}
+
+def secretProperties = new Properties()
+def secretFile = rootProject.file("client-secrets.properties")
+if (secretFile.isFile()) {
+    secretFile.withInputStream { secretProperties.load(it) }
+}
+
+def secret = { String key, String environmentKey, String fallback ->
+    def fromFile = secretProperties.getProperty(key)
+    if (fromFile != null && !fromFile.trim().isEmpty()) {
+        return fromFile.trim()
+    }
+    def fromEnvironment = System.getenv(environmentKey)
+    return (fromEnvironment == null || fromEnvironment.trim().isEmpty()) ? fallback : fromEnvironment.trim()
+}
+
+def javaString = { String value ->
+    '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
+def configuredServerUrl = secret("serverUrl", "CLOUDPHONE_SERVER_URL", "https://invalid.cloudphone.local:8443")
+def configuredClientId = secret("clientId", "CLOUDPHONE_CLIENT_ID", "unconfigured-client")
+def configuredPsk = secret("clientPskBase64", "CLOUDPHONE_PSK_BASE64", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+def configuredPin = secret("certificatePin", "CLOUDPHONE_CERTIFICATE_PIN", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+def pskSlice = Math.max(1, (int) Math.ceil(configuredPsk.length() / 4.0d))
+def pskParts = (0..<4).collect { int index ->
+    int start = Math.min(index * pskSlice, configuredPsk.length())
+    int end = Math.min(start + pskSlice, configuredPsk.length())
+    configuredPsk.substring(start, end)
+}
+
+android {
+    namespace "com.cloudphone.client"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.cloudphone.client"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+
+        buildConfigField "String", "CLOUDPHONE_SERVER_URL", javaString(configuredServerUrl)
+        buildConfigField "String", "CLOUDPHONE_CLIENT_ID", javaString(configuredClientId)
+        buildConfigField "String", "CLOUDPHONE_CERTIFICATE_PIN", javaString(configuredPin)
+        buildConfigField "String", "CLOUDPHONE_PSK_PART_0", javaString(pskParts[0])
+        buildConfigField "String", "CLOUDPHONE_PSK_PART_1", javaString(pskParts[1])
+        buildConfigField "String", "CLOUDPHONE_PSK_PART_2", javaString(pskParts[2])
+        buildConfigField "String", "CLOUDPHONE_PSK_PART_3", javaString(pskParts[3])
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
+    signingConfigs {
+        release {
+            if (rootProject.ext.cloudPhoneSigningReady) {
+                storeFile rootProject.file(rootProject.ext.cloudPhoneSigning.getProperty("storeFile"))
+                storePassword rootProject.ext.cloudPhoneSigning.getProperty("storePassword")
+                keyAlias rootProject.ext.cloudPhoneSigning.getProperty("keyAlias")
+                keyPassword rootProject.ext.cloudPhoneSigning.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            // Keep the signed deliverable reproducible while the direct-stream
+            // decoder is exercised across vendor MediaCodec implementations.
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += ["META-INF/LICENSE.md", "META-INF/LICENSE-notice.md"]
+        }
+    }
+}
+
+dependencies {
+    implementation project(":protocol")
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.recyclerview:recyclerview:1.3.2"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "com.google.protobuf:protobuf-javalite:4.29.3"
+    testImplementation "junit:junit:4.13.2"
+}

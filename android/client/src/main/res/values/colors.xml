@@ -1,0 +1,11 @@
+<resources>
+    <color name="cloud_background">#0B1422</color>
+    <color name="cloud_surface">#192537</color>
+    <color name="cloud_surface_elevated">#26384D</color>
+    <color name="cloud_primary">#70B7FF</color>
+    <color name="cloud_text">#F2F7FF</color>
+    <color name="cloud_muted">#A7B5C8</color>
+    <color name="cloud_online">#48C875</color>
+    <color name="cloud_error">#FF7B86</color>
+</resources>
+

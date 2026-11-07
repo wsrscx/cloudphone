@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>云手机管理</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>云手机管理</h1>
+      <p id="server-address">正在连接本地服务</p>
+    </div>
+    <div class="top-actions">
+      <span id="binding" class="status-chip">客户端状态未知</span>
+      <button id="refresh" class="icon-button" title="刷新设备" aria-label="刷新设备">&#8635;</button>
+    </div>
+  </header>
+  <main>
+    <section class="summary" aria-label="服务状态">
+      <div><span>ADB 设备</span><strong id="device-count">0</strong></div>
+      <div><span>已授权</span><strong id="authorized-count">0</strong></div>
+      <div><span>活动会话</span><strong id="session-state">无</strong></div>
+      <button id="reset-client" class="danger-button">重置客户端绑定</button>
+    </section>
+    <section class="devices-section">
+      <div class="section-heading">
+        <div>
+          <h2>可控设备</h2>
+          <p>只有在这里授权的 Android 设备才会出现在手机客户端。</p>
+        </div>
+        <span id="notice" role="status"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>设备</th><th>系统</th><th>ADB 状态</th><th>输入助手</th><th>客户端授权</th></tr></thead>
+          <tbody id="device-list"></tbody>
+        </table>
+        <div id="empty" class="empty" hidden>尚未发现设备。请连接手机并确认 USB 调试授权。</div>
+      </div>
+    </section>
+  </main>
+  <dialog id="login-dialog">
+    <form id="login-form" method="dialog">
+      <h2>本地管理登录</h2>
+      <p>输入配置项目时设置的管理密码。</p>
+      <label>管理密码<input id="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="error" aria-live="polite"></p>
+      <button type="submit" class="primary-button">登录</button>
+    </form>
+  </dialog>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

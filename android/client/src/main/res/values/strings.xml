@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Cloud Phone</string>
+    <string name="devices">My cloud phones</string>
+    <string name="refresh">Refresh</string>
+    <string name="connecting">Connecting…</string>
+    <string name="offline">Offline</string>
+    <string name="online">Online</string>
+    <string name="busy">In use</string>
+    <string name="not_authorized">Not authorized</string>
+    <string name="assistant_unavailable">Input helper unavailable</string>
+    <string name="operation">Controls</string>
+    <string name="back">Back</string>
+    <string name="home">Home</string>
+    <string name="recents">Recents</string>
+    <string name="exit">End session</string>
+    <string name="rotate">Rotate</string>
+    <string name="quality">Quality</string>
+    <string name="send">Send</string>
+    <string name="input_hint">Type on the remote phone</string>
+    <string name="quality_auto">Auto</string>
+    <string name="quality_original">Original</string>
+    <string name="quality_1080">1080P</string>
+    <string name="quality_720">720P</string>
+    <string name="quality_smooth">Smooth 540P</string>
+    <string name="quality_not_ready">Video controls are still connecting</string>
+    <string name="metrics_unknown">Waiting for network statistics</string>
+    <string name="connection_error">Connection error</string>
+</resources>

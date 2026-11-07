@@ -1,0 +1,45 @@
+# Python environments and caches
+.venv/
+.venv*/
+.tools/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Gradle and Android build output
+.gradle/
+**/.gradle/
+.gradle-direct/
+**/build/
+android/gradle/wrapper/gradle-wrapper.jar
+local.properties
+.idea/
+*.iml
+
+# Local secrets and machine-specific configuration
+data/
+dist/
+signing.properties
+client-secrets.properties
+server.env
+*.env
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.crt
+*.db
+
+# Build workspaces, logs and local artifacts
+.work/
+artifacts/
+third_party/scrcpy/out/
+third_party/scrcpy/scrcpy-v4.1.tar.gz
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

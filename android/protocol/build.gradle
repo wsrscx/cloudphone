@@ -1,0 +1,56 @@
+plugins {
+    id "java-library"
+    id "com.google.protobuf"
+}
+
+// Native protoc on Windows cannot reliably consume a workspace path containing non-ASCII text.
+// Stage the immutable schema and generated output in Gradle's ASCII-only cache directory.
+def workspaceKey = Integer.toHexString(rootProject.rootDir.absolutePath.hashCode())
+def protocolCacheRoot = new File(gradle.gradleUserHomeDir, "caches/cloudphone-protocol/${workspaceKey}")
+def stagedProtoDir = new File(protocolCacheRoot, "src")
+layout.buildDirectory.set(new File(protocolCacheRoot, "build"))
+
+def stageCloudPhoneProto = tasks.register("stageCloudPhoneProto", Sync) {
+    from rootProject.file("../protocol/cloudphone.proto")
+    into stagedProtoDir
+}
+
+// The staged schema directory is also used as a resource input by the
+// java-library plugin.  Gradle 8.9 validates task dependencies strictly, so
+// make the relationship explicit instead of relying on task ordering.
+tasks.named("processResources").configure {
+    dependsOn(stageCloudPhoneProto)
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+sourceSets {
+    main {
+        proto {
+            srcDir stagedProtoDir
+        }
+    }
+}
+
+dependencies {
+    api "com.google.protobuf:protobuf-javalite:4.29.3"
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.29.3"
+    }
+    generateProtoTasks {
+        all().configureEach { task ->
+            task.dependsOn(stageCloudPhoneProto)
+            task.builtins {
+                java {
+                    option "lite"
+                }
+            }
+        }
+    }
+}

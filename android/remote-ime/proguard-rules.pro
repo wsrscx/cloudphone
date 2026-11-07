@@ -1,0 +1,4 @@
+-keep class com.cloudphone.ime.RemoteInputMethodService { *; }
+-keep class com.cloudphone.ime.SocketConfigReceiver { *; }
+-keep class com.cloudphone.remoteime.RemoteInputMethodService { *; }
+-keep class com.cloudphone.remoteime.SessionConfigReceiver { *; }

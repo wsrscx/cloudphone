@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">云手机</string>
+    <string name="devices">我的云手机</string>
+    <string name="refresh">刷新</string>
+    <string name="connecting">正在连接…</string>
+    <string name="offline">离线</string>
+    <string name="online">在线</string>
+    <string name="busy">使用中</string>
+    <string name="not_authorized">未授权</string>
+    <string name="assistant_unavailable">输入助手不可用</string>
+    <string name="operation">操作</string>
+    <string name="back">返回</string>
+    <string name="home">首页</string>
+    <string name="recents">多任务</string>
+    <string name="exit">退出连接</string>
+    <string name="rotate">旋转屏幕</string>
+    <string name="quality">画质</string>
+    <string name="send">发送</string>
+    <string name="input_hint">在远程手机中输入</string>
+    <string name="quality_auto">自动</string>
+    <string name="quality_original">原画</string>
+    <string name="quality_1080">1080P</string>
+    <string name="quality_720">720P</string>
+    <string name="quality_smooth">流畅 540P</string>
+    <string name="quality_not_ready">画质控制正在连接，请稍后重试</string>
+    <string name="metrics_unknown">正在等待网络数据</string>
+    <string name="connection_error">连接失败</string>
+</resources>

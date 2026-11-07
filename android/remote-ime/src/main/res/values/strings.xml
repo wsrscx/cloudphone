@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CloudPhone Remote IME</string>
+    <string name="ime_name">CloudPhone Remote Input</string>
+    <string name="ime_subtype_name">Remote input</string>
+</resources>

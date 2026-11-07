@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package cloudphone.v1;
+
+option java_package = "com.cloudphone.protocol";
+option java_outer_classname = "CloudPhoneProtocol";
+option optimize_for = LITE_RUNTIME;
+
+message Envelope {
+  uint32 protocol_version = 1;
+  uint64 sequence = 2;
+  uint32 video_generation = 3;
+
+  oneof payload {
+    TouchEvent touch = 10;
+    TouchMoveBatch touch_moves = 11;
+    NavigationCommand navigation = 12;
+    RotateRequest rotate = 13;
+    QualityRequest quality_request = 14;
+    ReceiverStats receiver_stats = 15;
+    ImeSubmit ime_submit = 16;
+    Heartbeat heartbeat = 17;
+
+    VideoGeometry video_geometry = 30;
+    QualityApplied quality_applied = 31;
+    ImeFocus ime_focus = 32;
+    SessionError session_error = 33;
+  }
+}
+
+enum TouchAction {
+  TOUCH_ACTION_UNSPECIFIED = 0;
+  TOUCH_DOWN = 1;
+  TOUCH_UP = 2;
+  TOUCH_CANCEL = 3;
+}
+
+message TouchPoint {
+  uint64 pointer_id = 1;
+  uint32 normalized_x = 2;
+  uint32 normalized_y = 3;
+  uint32 normalized_pressure = 4;
+}
+
+message TouchEvent {
+  TouchAction action = 1;
+  TouchPoint point = 2;
+}
+
+message TouchMoveBatch {
+  repeated TouchPoint points = 1;
+}
+
+enum NavigationKey {
+  NAVIGATION_KEY_UNSPECIFIED = 0;
+  NAVIGATION_BACK = 1;
+  NAVIGATION_HOME = 2;
+  NAVIGATION_RECENTS = 3;
+}
+
+message NavigationCommand {
+  NavigationKey key = 1;
+}
+
+message RotateRequest {}
+
+enum QualityMode {
+  QUALITY_MODE_UNSPECIFIED = 0;
+  QUALITY_AUTO = 1;
+  QUALITY_1080P = 2;
+  QUALITY_720P = 3;
+  QUALITY_SMOOTH = 4;
+  QUALITY_ORIGINAL = 5;
+}
+
+message QualityRequest {
+  uint64 request_id = 1;
+  QualityMode mode = 2;
+}
+
+message QualityApplied {
+  uint64 request_id = 1;
+  QualityMode mode = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  uint32 fps = 5;
+  uint32 bitrate_bps = 6;
+  bool encoder_restarted = 7;
+}
+
+message ReceiverStats {
+  double round_trip_time_ms = 1;
+  double packet_loss_fraction = 2;
+  double jitter_buffer_ms = 3;
+  uint64 freeze_count = 4;
+  uint64 bytes_received = 5;
+  double rendered_fps = 6;
+  uint64 available_incoming_bitrate_bps = 7;
+  double network_jitter_ms = 8;
+  uint64 frames_dropped = 9;
+  uint64 incoming_bitrate_bps = 10;
+}
+
+message VideoGeometry {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 rotation = 3;
+}
+
+message ImeFocus {
+  bool active = 1;
+  int32 input_type = 2;
+  int32 ime_options = 3;
+  bool password = 4;
+}
+
+message ImeSubmit {
+  string text = 1;
+  int32 editor_action = 2;
+}
+
+message Heartbeat {
+  uint64 monotonic_time_ms = 1;
+}
+
+message SessionError {
+  string code = 1;
+  string message = 2;
+  bool fatal = 3;
+}

@@ -1,0 +1,8 @@
+name=Genymobile/scrcpy
+version=v4.1
+tag_object=49c9501fb26f456bbf4a341dd68879f670c67452
+commit=2926c06c5dc3064ae6d8db706f1a98a37cfcf3f0
+source_url=https://codeload.github.com/Genymobile/scrcpy/tar.gz/refs/tags/v4.1
+source_sha256=537b2ade623cb94b6edddfa5c61bf0b0af21484aa8365ea2531b686ea573249a
+release_server_url=https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-server-v4.1
+release_server_sha256=deacb991ed2509715160ffdc7907e47b4160eb30d1566217e9047fd5b8850cae

@@ -1,0 +1,37 @@
+plugins {
+    id "com.android.application" version "8.7.3" apply false
+    id "com.google.protobuf" version "0.9.4" apply false
+}
+
+import java.util.Properties
+
+ext.cloudPhoneSigning = new Properties()
+def signingFile = rootProject.file("signing.properties")
+if (signingFile.isFile()) {
+    signingFile.withInputStream { ext.cloudPhoneSigning.load(it) }
+}
+ext.cloudPhoneSigningReady = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every {
+    ext.cloudPhoneSigning.getProperty(it)?.trim()
+}
+
+// Java and protoc on Windows do not consistently handle test/build classpaths
+// rooted below a non-ASCII workspace path. Keep generated output in Gradle's
+// ASCII-only user cache; source files and final distribution artifacts remain
+// in the repository.
+def workspaceKey = Integer.toHexString(rootDir.absolutePath.hashCode())
+def androidBuildRoot = new File(gradle.gradleUserHomeDir, "caches/cloudphone-android/${workspaceKey}")
+
+subprojects { subproject ->
+    subproject.layout.buildDirectory.set(new File(androidBuildRoot, subproject.name))
+}
+
+tasks.register("copyAndroidArtifacts", Copy) {
+    dependsOn(":client:assembleRelease", ":remote-ime:assembleRelease")
+    into(rootProject.file("../dist"))
+    from(project(":client").layout.buildDirectory.file("outputs/apk/release/client-release.apk")) {
+        rename { "cloudphone-client.apk" }
+    }
+    from(project(":remote-ime").layout.buildDirectory.file("outputs/apk/release/remote-ime-release.apk")) {
+        rename { "cloudphone-remote-ime.apk" }
+    }
+}

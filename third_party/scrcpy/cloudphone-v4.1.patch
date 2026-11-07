@@ -1,0 +1,827 @@
+diff --git a/build.gradle b/build.gradle
+index 836455d..3ffd772 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -7,7 +7,7 @@ buildscript {
+         mavenCentral()
+     }
+     dependencies {
+-        classpath 'com.android.tools.build:gradle:9.1.0'
++        classpath 'com.android.tools.build:gradle:8.7.3'
+ 
+         // NOTE: Do not place your application dependencies here; they belong
+         // in the individual module build.gradle files
+diff --git a/server/build.gradle b/server/build.gradle
+index 0d70163..a637f46 100644
+--- a/server/build.gradle
++++ b/server/build.gradle
+@@ -2,11 +2,12 @@ apply plugin: 'com.android.application'
+ 
+ android {
+     namespace = 'com.genymobile.scrcpy'
+-    compileSdk = 36
++    compileSdk = 34
++    buildToolsVersion = '34.0.0'
+     defaultConfig {
+         applicationId = "com.genymobile.scrcpy"
+         minSdkVersion 21
+-        targetSdkVersion 36
++        targetSdkVersion 34
+         versionCode 40100
+         versionName "4.1"
+         testInstrumentationRunner = "android.support.test.runner.AndroidJUnitRunner"
+@@ -30,3 +31,11 @@ dependencies {
+ }
+ 
+ apply from: "$project.rootDir/config/android-checkstyle.gradle"
++
++tasks.withType(JavaCompile).configureEach {
++    options.fork = true
++    options.forkOptions.executable = new File(System.getProperty("java.home"), "bin/javac.exe").absolutePath
++    doFirst {
++        classpath = classpath.filter { it.name != "R.jar" }
++    }
++}
+diff --git a/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java b/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java
+index 5303924..7991b6a 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java
++++ b/server/src/main/java/com/genymobile/scrcpy/AndroidVersions.java
+@@ -27,6 +27,6 @@ public final class AndroidVersions {
+     public static final int API_32_ANDROID_12L = Build.VERSION_CODES.S_V2;
+     public static final int API_33_ANDROID_13 = Build.VERSION_CODES.TIRAMISU;
+     public static final int API_34_ANDROID_14 = Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
+-    public static final int API_35_ANDROID_15 = Build.VERSION_CODES.VANILLA_ICE_CREAM;
++    public static final int API_35_ANDROID_15 = 35;
+ 
+ }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/Server.java b/server/src/main/java/com/genymobile/scrcpy/Server.java
+index d7d1a76..b5fc721 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/Server.java
++++ b/server/src/main/java/com/genymobile/scrcpy/Server.java
+@@ -156,6 +156,7 @@ public final class Server {
+ 
+                 if (controller != null) {
+                     controller.setSurfaceCapture(surfaceCapture);
++                    controller.setSurfaceEncoder(surfaceEncoder);
+                 }
+             }
+ 
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java
+index 777873b..bd0b7e2 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessage.java
+@@ -30,6 +30,8 @@ public final class ControlMessage {
+     public static final int TYPE_CAMERA_ZOOM_OUT = 20;
+     public static final int TYPE_RESIZE_DISPLAY = 21;
+     public static final int TYPE_SCAN_FILE = 22;
++    public static final int TYPE_SET_VIDEO_QUALITY = 0x70;
++    public static final int TYPE_REQUEST_IDR = 0x71;
+ 
+     public static final long SEQUENCE_INVALID = 0;
+ 
+@@ -60,6 +62,10 @@ public final class ControlMessage {
+     private int productId;
+     private int width;
+     private int height;
++    private long requestId;
++    private int videoBitRate;
++    private int maxSize;
++    private int maxFps;
+ 
+     private ControlMessage() {
+     }
+@@ -195,6 +201,16 @@ public final class ControlMessage {
+         return msg;
+     }
+ 
++    public static ControlMessage createSetVideoQuality(long requestId, int videoBitRate, int maxSize, int maxFps) {
++        ControlMessage msg = new ControlMessage();
++        msg.type = TYPE_SET_VIDEO_QUALITY;
++        msg.requestId = requestId;
++        msg.videoBitRate = videoBitRate;
++        msg.maxSize = maxSize;
++        msg.maxFps = maxFps;
++        return msg;
++    }
++
+     public int getType() {
+         return type;
+     }
+@@ -286,4 +302,20 @@ public final class ControlMessage {
+     public int getHeight() {
+         return height;
+     }
++
++    public long getRequestId() {
++        return requestId;
++    }
++
++    public int getVideoBitRate() {
++        return videoBitRate;
++    }
++
++    public int getMaxSize() {
++        return maxSize;
++    }
++
++    public int getMaxFps() {
++        return maxFps;
++    }
+ }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java
+index b2591d6..09d7862 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/ControlMessageReader.java
+@@ -47,6 +47,7 @@ public class ControlMessageReader {
+             case ControlMessage.TYPE_ROTATE_DEVICE:
+             case ControlMessage.TYPE_OPEN_HARD_KEYBOARD_SETTINGS:
+             case ControlMessage.TYPE_RESET_VIDEO:
++            case ControlMessage.TYPE_REQUEST_IDR:
+             case ControlMessage.TYPE_CAMERA_ZOOM_IN:
+             case ControlMessage.TYPE_CAMERA_ZOOM_OUT:
+                 return ControlMessage.createEmpty(type);
+@@ -64,6 +65,8 @@ public class ControlMessageReader {
+                 return parseResizeDisplay();
+             case ControlMessage.TYPE_SCAN_FILE:
+                 return parseScanFile();
++            case ControlMessage.TYPE_SET_VIDEO_QUALITY:
++                return parseSetVideoQuality();
+             default:
+                 throw new ControlProtocolException("Unknown event type: " + type);
+         }
+@@ -190,6 +193,14 @@ public class ControlMessageReader {
+         return ControlMessage.createScanFile(path);
+     }
+ 
++    private ControlMessage parseSetVideoQuality() throws IOException {
++        long requestId = dis.readLong();
++        int videoBitRate = dis.readInt();
++        int maxSize = dis.readInt();
++        int maxFps = dis.readInt();
++        return ControlMessage.createSetVideoQuality(requestId, videoBitRate, maxSize, maxFps);
++    }
++
+     private Position parsePosition() throws IOException {
+         int x = dis.readInt();
+         int y = dis.readInt();
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
+index 55d6e11..02a5704 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
+@@ -16,6 +16,7 @@ import com.genymobile.scrcpy.video.CameraCapture;
+ import com.genymobile.scrcpy.video.CaptureControl;
+ import com.genymobile.scrcpy.video.NewDisplayCapture;
+ import com.genymobile.scrcpy.video.SurfaceCapture;
++import com.genymobile.scrcpy.video.SurfaceEncoder;
+ import com.genymobile.scrcpy.video.VideoSource;
+ import com.genymobile.scrcpy.video.VirtualDisplayListener;
+ import com.genymobile.scrcpy.wrappers.ClipboardManager;
+@@ -111,6 +112,7 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+ 
+     // Used for resetting video encoding on RESET_VIDEO message or for sending camera controls
+     private SurfaceCapture surfaceCapture;
++    private SurfaceEncoder surfaceEncoder;
+ 
+     public Controller(ControlChannel controlChannel, CleanUp cleanUp, Options options) {
+         this.camera = options.getVideoSource() == VideoSource.CAMERA;
+@@ -179,6 +181,10 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+         this.surfaceCapture = surfaceCapture;
+     }
+ 
++    public void setSurfaceEncoder(SurfaceEncoder surfaceEncoder) {
++        this.surfaceEncoder = surfaceEncoder;
++    }
++
+     private UhidManager getUhidManager() {
+         if (uhidManager == null) {
+             int uhidDisplayId = displayId;
+@@ -337,6 +343,21 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+             case ControlMessage.TYPE_RESET_VIDEO:
+                 resetVideo();
+                 return true;
++            case ControlMessage.TYPE_REQUEST_IDR:
++                if (surfaceEncoder != null) {
++                    surfaceEncoder.requestIdr();
++                }
++                return true;
++            case ControlMessage.TYPE_SET_VIDEO_QUALITY:
++                if (surfaceEncoder != null && sender != null) {
++                    SurfaceEncoder.VideoQualityResult result = surfaceEncoder.setVideoQuality(
++                            msg.getVideoBitRate(), msg.getMaxSize(), msg.getMaxFps());
++                    DeviceMessage ack = DeviceMessage.createAckVideoQuality(
++                            msg.getRequestId(), result.getStatus(), result.getVideoBitRate(), result.getMaxSize(), result.getMaxFps(),
++                            result.getRestarted());
++                    sender.send(ack);
++                }
++                return true;
+             default:
+                 // fall through
+         }
+@@ -870,6 +891,12 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+     }
+ 
+     private void resetVideo() {
++        if (surfaceEncoder != null) {
++            // Recovery is scheduled away from this control thread so a slow or
++            // wedged codec can never block touch/key injection.
++            surfaceEncoder.recoverVideo();
++            return;
++        }
+         if (surfaceCapture != null) {
+             Ln.i("Video capture reset");
+             surfaceCapture.getCaptureControl().reset(CaptureControl.RESET_REASON_CLIENT_RESET);
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
+index 079a7a0..13980b1 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
+@@ -5,12 +5,22 @@ public final class DeviceMessage {
+     public static final int TYPE_CLIPBOARD = 0;
+     public static final int TYPE_ACK_CLIPBOARD = 1;
+     public static final int TYPE_UHID_OUTPUT = 2;
++    public static final int TYPE_ACK_VIDEO_QUALITY = 0x72;
++
++    public static final int VIDEO_QUALITY_STATUS_APPLIED = 0;
++    public static final int VIDEO_QUALITY_STATUS_RECONFIGURING = 1;
++    public static final int VIDEO_QUALITY_STATUS_REJECTED = 2;
+ 
+     private int type;
+     private String text;
+     private long sequence;
+     private int id;
+     private byte[] data;
++    private int status;
++    private int videoBitRate;
++    private int maxSize;
++    private int maxFps;
++    private boolean restarted;
+ 
+     private DeviceMessage() {
+     }
+@@ -37,6 +47,19 @@ public final class DeviceMessage {
+         return event;
+     }
+ 
++    public static DeviceMessage createAckVideoQuality(long requestId, int status, int videoBitRate, int maxSize, int maxFps,
++            boolean restarted) {
++        DeviceMessage event = new DeviceMessage();
++        event.type = TYPE_ACK_VIDEO_QUALITY;
++        event.sequence = requestId;
++        event.status = status;
++        event.videoBitRate = videoBitRate;
++        event.maxSize = maxSize;
++        event.maxFps = maxFps;
++        event.restarted = restarted;
++        return event;
++    }
++
+     public int getType() {
+         return type;
+     }
+@@ -56,4 +79,24 @@ public final class DeviceMessage {
+     public byte[] getData() {
+         return data;
+     }
++
++    public int getStatus() {
++        return status;
++    }
++
++    public int getVideoBitRate() {
++        return videoBitRate;
++    }
++
++    public int getMaxSize() {
++        return maxSize;
++    }
++
++    public int getMaxFps() {
++        return maxFps;
++    }
++
++    public boolean getRestarted() {
++        return restarted;
++    }
+ }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
+index a18a2e5..2fb5ec4 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
+@@ -39,6 +39,14 @@ public class DeviceMessageWriter {
+                 dos.writeShort(data.length);
+                 dos.write(data);
+                 break;
++            case DeviceMessage.TYPE_ACK_VIDEO_QUALITY:
++                dos.writeLong(msg.getSequence());
++                dos.writeByte(msg.getStatus());
++                dos.writeInt(msg.getVideoBitRate());
++                dos.writeInt(msg.getMaxSize());
++                dos.writeInt(msg.getMaxFps());
++                dos.writeBoolean(msg.getRestarted());
++                break;
+             default:
+                 throw new ControlProtocolException("Unknown event type: " + type);
+         }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/CaptureControl.java b/server/src/main/java/com/genymobile/scrcpy/video/CaptureControl.java
+index 7933ea7..0fde8a2 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/video/CaptureControl.java
++++ b/server/src/main/java/com/genymobile/scrcpy/video/CaptureControl.java
+@@ -1,6 +1,7 @@
+ package com.genymobile.scrcpy.video;
+ 
+ import android.media.MediaCodec;
++import android.os.Bundle;
+ 
+ public class CaptureControl {
+ 
+@@ -8,6 +9,7 @@ public class CaptureControl {
+     public static final int RESET_REASON_DISPLAY_PROPERTIES_CHANGED = 1 << 1;
+     public static final int RESET_REASON_CLIENT_RESET = 1 << 2;
+     public static final int RESET_REASON_CLIENT_RESIZED = 1 << 3;
++    public static final int RESET_REASON_VIDEO_QUALITY_CHANGED = 1 << 4;
+ 
+     private int reset = 0;
+ 
+@@ -24,12 +26,16 @@ public class CaptureControl {
+         return value;
+     }
+ 
+-    public synchronized void reset(int reason) {
++    public void reset(int reason) {
+         assert reason != 0;
+-        reset |= reason;
+-        if (runningMediaCodec != null) {
++        MediaCodec mediaCodec;
++        synchronized (this) {
++            reset |= reason;
++            mediaCodec = runningMediaCodec;
++        }
++        if (mediaCodec != null) {
+             try {
+-                runningMediaCodec.signalEndOfInputStream();
++                mediaCodec.signalEndOfInputStream();
+             } catch (IllegalStateException e) {
+                 // ignore
+             }
+@@ -39,4 +45,38 @@ public class CaptureControl {
+     public synchronized void setRunningMediaCodec(MediaCodec runningMediaCodec) {
+         this.runningMediaCodec = runningMediaCodec;
+     }
++
++    public boolean setVideoBitRate(int videoBitRate) {
++        MediaCodec mediaCodec = getRunningMediaCodec();
++        if (mediaCodec == null) {
++            return false;
++        }
++        Bundle parameters = new Bundle();
++        parameters.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, videoBitRate);
++        try {
++            mediaCodec.setParameters(parameters);
++            return true;
++        } catch (IllegalArgumentException | IllegalStateException exception) {
++            return false;
++        }
++    }
++
++    public boolean requestSyncFrame() {
++        MediaCodec mediaCodec = getRunningMediaCodec();
++        if (mediaCodec == null) {
++            return false;
++        }
++        Bundle parameters = new Bundle();
++        parameters.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
++        try {
++            mediaCodec.setParameters(parameters);
++            return true;
++        } catch (IllegalArgumentException | IllegalStateException exception) {
++            return false;
++        }
++    }
++
++    private synchronized MediaCodec getRunningMediaCodec() {
++        return runningMediaCodec;
++    }
+ }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/SurfaceEncoder.java b/server/src/main/java/com/genymobile/scrcpy/video/SurfaceEncoder.java
+index 539681b..6f20c98 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/video/SurfaceEncoder.java
++++ b/server/src/main/java/com/genymobile/scrcpy/video/SurfaceEncoder.java
+@@ -3,6 +3,7 @@ package com.genymobile.scrcpy.video;
+ import com.genymobile.scrcpy.AndroidVersions;
+ import com.genymobile.scrcpy.AsyncProcessor;
+ import com.genymobile.scrcpy.Options;
++import com.genymobile.scrcpy.control.DeviceMessage;
+ import com.genymobile.scrcpy.device.Streamer;
+ import com.genymobile.scrcpy.model.Codec;
+ import com.genymobile.scrcpy.model.CodecOption;
+@@ -24,13 +25,25 @@ import android.view.Surface;
+ import java.io.IOException;
+ import java.nio.ByteBuffer;
+ import java.util.List;
++import java.util.Locale;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.RejectedExecutionException;
+ import java.util.concurrent.atomic.AtomicBoolean;
++import java.util.concurrent.atomic.AtomicInteger;
+ 
+ public class SurfaceEncoder implements AsyncProcessor {
+ 
+     private static final int DEFAULT_I_FRAME_INTERVAL = 10; // seconds
+-    private static final int REPEAT_FRAME_DELAY_US = 100_000; // repeat after 100ms
++    private static final int REPEAT_FRAME_DELAY_US = 1_000_000; // one keepalive frame per second
+     private static final String KEY_MAX_FPS_TO_ENCODER = "max-fps-to-encoder";
++    private static final int CONSTRAINED_ENCODER_MAX_FPS = 30;
++    private static final int CONSTRAINED_ENCODER_MIN_I_FRAME_INTERVAL = 5;
++    private static final long ENCODER_START_GRACE_MS = 3_000;
++    private static final long ENCODER_OUTPUT_STALL_MS = 3_000;
++    private static final long HARD_RESET_COOLDOWN_MS = 10_000;
++    private static final int RECOVERY_REQUEST_IDR = 1;
++    private static final int RECOVERY_RESET_IF_STALLED = 2;
+ 
+     // Keep the values in descending order
+     private static final int[] MAX_SIZE_FALLBACK = {2560, 1920, 1600, 1280, 1024, 800};
+@@ -40,9 +53,9 @@ public class SurfaceEncoder implements AsyncProcessor {
+     private final Streamer streamer;
+     private final String encoderName;
+     private final List<CodecOption> codecOptions;
+-    private final int videoBitRate;
+-    private final int maxSize;
+-    private final float maxFps;
++    private volatile int videoBitRate;
++    private volatile int maxSize;
++    private volatile float maxFps;
+     private final boolean downsizeOnError;
+     private final int minSizeAlignment;
+     private final boolean ignoreVideoEncoderConstraints;
+@@ -51,7 +64,20 @@ public class SurfaceEncoder implements AsyncProcessor {
+     private int consecutiveErrors;
+ 
+     private Thread thread;
++    private final AtomicBoolean qualityChangePending = new AtomicBoolean();
+     private final AtomicBoolean stopped = new AtomicBoolean();
++    private final AtomicInteger pendingRecovery = new AtomicInteger();
++    private final ExecutorService recoveryExecutor = Executors.newSingleThreadExecutor(runnable -> {
++        Thread recoveryThread = new Thread(runnable, "video-recovery");
++        recoveryThread.setDaemon(true);
++        return recoveryThread;
++    });
++
++    private volatile int encoderBitRateLimit;
++    private volatile boolean constrainedEncoder;
++    private volatile long encoderStartedAtMs;
++    private volatile long lastFrameSentAtMs;
++    private volatile long lastHardResetAtMs;
+ 
+     private final CaptureControl captureControl = new CaptureControl();
+ 
+@@ -68,12 +94,15 @@ public class SurfaceEncoder implements AsyncProcessor {
+         this.downsizeOnError = options.getDownsizeOnError();
+         this.minSizeAlignment = options.getMinSizeAlignment();
+         this.ignoreVideoEncoderConstraints = options.getIgnoreVideoEncoderConstraints();
++        this.encoderStartedAtMs = SystemClock.elapsedRealtime();
+     }
+ 
+     private void streamCapture() throws IOException, ConfigurationException {
+         Codec codec = streamer.getCodec();
+         MediaCodec mediaCodec = createMediaCodec(codec, encoderName);
+         MediaFormat format = createFormat(codec.getMimeType(), videoBitRate, maxFps, codecOptions);
++        MediaCodecInfo codecInfo = mediaCodec.getCodecInfo();
++        constrainedEncoder = isConstrainedEncoder(codecInfo);
+ 
+         MediaCodecInfo.VideoCapabilities caps;
+         int alignment;
+@@ -81,11 +110,23 @@ public class SurfaceEncoder implements AsyncProcessor {
+             caps = null;
+             alignment = 1;
+         } else {
+-            caps = mediaCodec.getCodecInfo().getCapabilitiesForType(codec.getMimeType()).getVideoCapabilities();
++            caps = codecInfo.getCapabilitiesForType(codec.getMimeType()).getVideoCapabilities();
+             assert caps != null; // caps cannot be null for a video codec
++            encoderBitRateLimit = caps.getBitrateRange().getUpper();
+             alignment = Math.max(caps.getWidthAlignment(), caps.getHeightAlignment());
+             Ln.d("Video codec size alignment requirement: " + alignment + "px");
+         }
++        int requestedBitRate = videoBitRate;
++        float requestedMaxFps = maxFps;
++        videoBitRate = constrainBitRate(videoBitRate, encoderBitRateLimit);
++        maxFps = constrainFps(Math.round(maxFps), constrainedEncoder);
++        applyVideoQuality(format, videoBitRate, maxFps);
++        applyGopPolicy(format, constrainedEncoder);
++        Ln.i("Video encoder policy: name=" + codecInfo.getName() + ", bitrate=" + videoBitRate + ", fps=" + Math.round(maxFps)
++                + ", constrained=" + constrainedEncoder);
++        if (requestedBitRate != videoBitRate || Math.round(requestedMaxFps) != Math.round(maxFps)) {
++            Ln.w("Video quality constrained to the selected encoder capabilities");
++        }
+         if (alignment < minSizeAlignment) {
+             alignment = minSizeAlignment;
+             Ln.d("Actual video size alignment: " + alignment + "px");
+@@ -114,9 +155,19 @@ public class SurfaceEncoder implements AsyncProcessor {
+                     retainedResetReasons = 0;
+                 }
+ 
++                if (qualityChangePending.getAndSet(false)) {
++                    VideoConstraints requestedConstraints = videoConstraints.withMaxSize(maxSize);
++                    if (capture.applyNewVideoConstraints(requestedConstraints)) {
++                        videoConstraints = requestedConstraints;
++                    } else {
++                        Ln.w("The capture rejected the requested video constraints");
++                    }
++                }
++
+                 capture.prepare();
+                 Size size = capture.getSize();
+ 
++                applyVideoQuality(format, videoBitRate, maxFps);
+                 format.setInteger(MediaFormat.KEY_WIDTH, size.getWidth());
+                 format.setInteger(MediaFormat.KEY_HEIGHT, size.getHeight());
+ 
+@@ -132,6 +183,7 @@ public class SurfaceEncoder implements AsyncProcessor {
+ 
+                     mediaCodec.start();
+                     mediaCodecStarted = true;
++                    encoderStartedAtMs = SystemClock.elapsedRealtime();
+ 
+                     // Set the MediaCodec instance to "interrupt" (by signaling an EOS) on reset
+                     captureControl.setRunningMediaCodec(mediaCodec);
+@@ -268,6 +320,9 @@ public class SurfaceEncoder implements AsyncProcessor {
+ 
+                     ByteBuffer codecBuffer = codec.getOutputBuffer(outputBufferId);
+                     streamer.writePacket(codecBuffer, bufferInfo);
++                    if (!isConfig) {
++                        lastFrameSentAtMs = SystemClock.elapsedRealtime();
++                    }
+                 }
+             } finally {
+                 if (outputBufferId >= 0) {
+@@ -347,6 +402,154 @@ public class SurfaceEncoder implements AsyncProcessor {
+         return format;
+     }
+ 
++    private static void applyVideoQuality(MediaFormat format, int videoBitRate, float maxFps) {
++        format.setInteger(MediaFormat.KEY_BIT_RATE, videoBitRate);
++        format.setInteger(MediaFormat.KEY_FRAME_RATE, Math.max(1, Math.round(maxFps)));
++        // This key was private before Android 10, but is understood by encoders on supported scrcpy devices.
++        format.setFloat(KEY_MAX_FPS_TO_ENCODER, maxFps);
++    }
++
++    private static void applyGopPolicy(MediaFormat format, boolean constrainedEncoder) {
++        if (!constrainedEncoder) {
++            return;
++        }
++        int interval = format.containsKey(MediaFormat.KEY_I_FRAME_INTERVAL)
++                ? format.getInteger(MediaFormat.KEY_I_FRAME_INTERVAL) : DEFAULT_I_FRAME_INTERVAL;
++        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, Math.max(interval, CONSTRAINED_ENCODER_MIN_I_FRAME_INTERVAL));
++    }
++
++    static int constrainBitRate(int requestedBitRate, int encoderBitRateLimit) {
++        return encoderBitRateLimit >= 128_000 ? Math.min(requestedBitRate, encoderBitRateLimit) : requestedBitRate;
++    }
++
++    static int constrainFps(int requestedMaxFps, boolean constrainedEncoder) {
++        return constrainedEncoder ? Math.min(requestedMaxFps, CONSTRAINED_ENCODER_MAX_FPS) : requestedMaxFps;
++    }
++
++    private static boolean isConstrainedEncoder(MediaCodecInfo codecInfo) {
++        if (Build.VERSION.SDK_INT >= AndroidVersions.API_29_ANDROID_10) {
++            return !codecInfo.isHardwareAccelerated();
++        }
++        String name = codecInfo.getName().toLowerCase(Locale.US);
++        return name.contains("google") || name.contains("android") || name.contains("software") || name.contains(".sw.");
++    }
++
++    public synchronized VideoQualityResult setVideoQuality(int requestedBitRate, int requestedMaxSize, int requestedMaxFps) {
++        if (requestedBitRate < 128_000 || requestedBitRate > 50_000_000
++                || requestedMaxSize < 256 || requestedMaxSize > 4096
++                || requestedMaxFps < 1 || requestedMaxFps > 120) {
++            return new VideoQualityResult(DeviceMessage.VIDEO_QUALITY_STATUS_REJECTED, videoBitRate, maxSize, Math.round(maxFps), false);
++        }
++
++        int appliedBitRate = constrainBitRate(requestedBitRate, encoderBitRateLimit);
++        int appliedMaxFps = constrainFps(requestedMaxFps, constrainedEncoder);
++        boolean mustRestart = maxSize != requestedMaxSize || Math.round(maxFps) != appliedMaxFps;
++        if (!mustRestart && captureControl.setVideoBitRate(appliedBitRate)) {
++            videoBitRate = appliedBitRate;
++            return new VideoQualityResult(DeviceMessage.VIDEO_QUALITY_STATUS_APPLIED, videoBitRate, maxSize, appliedMaxFps, false);
++        }
++
++        videoBitRate = appliedBitRate;
++        maxSize = requestedMaxSize;
++        maxFps = appliedMaxFps;
++        qualityChangePending.set(true);
++        captureControl.reset(CaptureControl.RESET_REASON_VIDEO_QUALITY_CHANGED);
++        return new VideoQualityResult(DeviceMessage.VIDEO_QUALITY_STATUS_RECONFIGURING, videoBitRate, maxSize, appliedMaxFps, true);
++    }
++
++    public boolean requestIdr() {
++        return scheduleRecovery(RECOVERY_REQUEST_IDR);
++    }
++
++    public void recoverVideo() {
++        scheduleRecovery(RECOVERY_RESET_IF_STALLED);
++    }
++
++    private boolean scheduleRecovery(int recovery) {
++        if (stopped.get()) {
++            return false;
++        }
++        int previous;
++        do {
++            previous = pendingRecovery.get();
++            if (previous >= recovery) {
++                return true;
++            }
++        } while (!pendingRecovery.compareAndSet(previous, recovery));
++
++        if (previous == 0) {
++            try {
++                recoveryExecutor.execute(this::drainRecoveryRequests);
++            } catch (RejectedExecutionException exception) {
++                pendingRecovery.set(0);
++                return false;
++            }
++        }
++        return true;
++    }
++
++    private void drainRecoveryRequests() {
++        while (!stopped.get()) {
++            int recovery = pendingRecovery.getAndSet(0);
++            if (recovery == 0) {
++                return;
++            }
++            if (recovery == RECOVERY_RESET_IF_STALLED) {
++                performRecovery();
++            } else if (!captureControl.requestSyncFrame()) {
++                Ln.w("Video recovery: IDR request could not be applied");
++            }
++        }
++    }
++
++    private void performRecovery() {
++        long now = SystemClock.elapsedRealtime();
++        if (!shouldHardReset(now, lastFrameSentAtMs, encoderStartedAtMs, lastHardResetAtMs)) {
++            if (captureControl.requestSyncFrame()) {
++                Ln.i("Video recovery: requested IDR without restarting a healthy encoder");
++            } else {
++                Ln.w("Video recovery: encoder is not ready for an IDR request");
++            }
++            return;
++        }
++
++        lastHardResetAtMs = now;
++        Ln.w("Video recovery: hard reset after encoder output stalled");
++        captureControl.reset(CaptureControl.RESET_REASON_CLIENT_RESET);
++    }
++
++    static boolean shouldHardReset(long now, long lastFrameSentAt, long encoderStartedAt, long lastHardResetAt) {
++        if (lastFrameSentAt > 0 && now - lastFrameSentAt <= ENCODER_OUTPUT_STALL_MS) {
++            return false;
++        }
++        if (lastFrameSentAt == 0 && encoderStartedAt > 0 && now - encoderStartedAt <= ENCODER_START_GRACE_MS) {
++            return false;
++        }
++        return lastHardResetAt == 0 || now - lastHardResetAt >= HARD_RESET_COOLDOWN_MS;
++    }
++
++    public static final class VideoQualityResult {
++        private final int status;
++        private final int videoBitRate;
++        private final int maxSize;
++        private final int maxFps;
++        private final boolean restarted;
++
++        VideoQualityResult(int status, int videoBitRate, int maxSize, int maxFps, boolean restarted) {
++            this.status = status;
++            this.videoBitRate = videoBitRate;
++            this.maxSize = maxSize;
++            this.maxFps = maxFps;
++            this.restarted = restarted;
++        }
++
++        public int getStatus() { return status; }
++        public int getVideoBitRate() { return videoBitRate; }
++        public int getMaxSize() { return maxSize; }
++        public int getMaxFps() { return maxFps; }
++        public boolean getRestarted() { return restarted; }
++    }
++
+     @Override
+     public void start(TerminationListener listener) {
+         thread = new Thread(() -> {
+@@ -375,6 +578,8 @@ public class SurfaceEncoder implements AsyncProcessor {
+     public void stop() {
+         if (thread != null) {
+             stopped.set(true);
++            pendingRecovery.set(0);
++            recoveryExecutor.shutdownNow();
+             captureControl.reset(CaptureControl.RESET_REASON_TERMINATED);
+         }
+     }
+diff --git a/server/src/test/java/com/genymobile/scrcpy/control/ControlMessageReaderTest.java b/server/src/test/java/com/genymobile/scrcpy/control/ControlMessageReaderTest.java
+index b3d18bf..0afe135 100644
+--- a/server/src/test/java/com/genymobile/scrcpy/control/ControlMessageReaderTest.java
++++ b/server/src/test/java/com/genymobile/scrcpy/control/ControlMessageReaderTest.java
+@@ -513,6 +513,36 @@ public class ControlMessageReaderTest {
+         Assert.assertEquals(-1, bis.read()); // EOS
+     }
+ 
++    @Test
++    public void testParseSetVideoQuality() throws IOException {
++        ByteArrayOutputStream bos = new ByteArrayOutputStream();
++        DataOutputStream dos = new DataOutputStream(bos);
++        dos.writeByte(ControlMessage.TYPE_SET_VIDEO_QUALITY);
++        dos.writeLong(0x01234567fedcba98L);
++        dos.writeInt(6_000_000);
++        dos.writeInt(720);
++        dos.writeInt(60);
++
++        ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
++        ControlMessage event = new ControlMessageReader(bis).read();
++
++        Assert.assertEquals(ControlMessage.TYPE_SET_VIDEO_QUALITY, event.getType());
++        Assert.assertEquals(0x01234567fedcba98L, event.getRequestId());
++        Assert.assertEquals(6_000_000, event.getVideoBitRate());
++        Assert.assertEquals(720, event.getMaxSize());
++        Assert.assertEquals(60, event.getMaxFps());
++        Assert.assertEquals(-1, bis.read());
++    }
++
++    @Test
++    public void testParseRequestIdr() throws IOException {
++        byte[] packet = {(byte) ControlMessage.TYPE_REQUEST_IDR};
++        ByteArrayInputStream bis = new ByteArrayInputStream(packet);
++        ControlMessage event = new ControlMessageReader(bis).read();
++        Assert.assertEquals(ControlMessage.TYPE_REQUEST_IDR, event.getType());
++        Assert.assertEquals(-1, bis.read());
++    }
++
+     @Test
+     public void testMultiEvents() throws IOException {
+         ByteArrayOutputStream bos = new ByteArrayOutputStream();
+diff --git a/server/src/test/java/com/genymobile/scrcpy/control/DeviceMessageWriterTest.java b/server/src/test/java/com/genymobile/scrcpy/control/DeviceMessageWriterTest.java
+index 4e4717f..3ac49fd 100644
+--- a/server/src/test/java/com/genymobile/scrcpy/control/DeviceMessageWriterTest.java
++++ b/server/src/test/java/com/genymobile/scrcpy/control/DeviceMessageWriterTest.java
+@@ -72,4 +72,31 @@ public class DeviceMessageWriterTest {
+ 
+         Assert.assertArrayEquals(expected, actual);
+     }
++
++    @Test
++    public void testSerializeAckVideoQuality() throws IOException {
++        ByteArrayOutputStream bos = new ByteArrayOutputStream();
++        DataOutputStream dos = new DataOutputStream(bos);
++        dos.writeByte(DeviceMessage.TYPE_ACK_VIDEO_QUALITY);
++        dos.writeLong(0x01234567fedcba98L);
++        dos.writeByte(DeviceMessage.VIDEO_QUALITY_STATUS_RECONFIGURING);
++        dos.writeInt(6_000_000);
++        dos.writeInt(720);
++        dos.writeInt(60);
++        dos.writeBoolean(true);
++        byte[] expected = bos.toByteArray();
++
++        bos = new ByteArrayOutputStream();
++        DeviceMessageWriter writer = new DeviceMessageWriter(bos);
++        DeviceMessage msg = DeviceMessage.createAckVideoQuality(
++                0x01234567fedcba98L,
++                DeviceMessage.VIDEO_QUALITY_STATUS_RECONFIGURING,
++                6_000_000,
++                720,
++                60,
++                true);
++        writer.write(msg);
++
++        Assert.assertArrayEquals(expected, bos.toByteArray());
++    }
+ }
+diff --git a/server/src/test/java/com/genymobile/scrcpy/video/SurfaceEncoderTest.java b/server/src/test/java/com/genymobile/scrcpy/video/SurfaceEncoderTest.java
+new file mode 100644
+--- /dev/null
++++ b/server/src/test/java/com/genymobile/scrcpy/video/SurfaceEncoderTest.java
+@@ -0,0 +1,26 @@
++package com.genymobile.scrcpy.video;
++
++import org.junit.Assert;
++import org.junit.Test;
++
++public class SurfaceEncoderTest {
++
++    @Test
++    public void testConstrainSoftwareEncoderQuality() {
++        Assert.assertEquals(12_000_000, SurfaceEncoder.constrainBitRate(24_000_000, 12_000_000));
++        Assert.assertEquals(8_000_000, SurfaceEncoder.constrainBitRate(8_000_000, 12_000_000));
++        Assert.assertEquals(32_000_000, SurfaceEncoder.constrainBitRate(32_000_000, 0));
++        Assert.assertEquals(30, SurfaceEncoder.constrainFps(60, true));
++        Assert.assertEquals(30, SurfaceEncoder.constrainFps(30, true));
++        Assert.assertEquals(60, SurfaceEncoder.constrainFps(60, false));
++    }
++
++    @Test
++    public void testHardResetOnlyForSustainedStallOutsideCooldown() {
++        Assert.assertFalse(SurfaceEncoder.shouldHardReset(10_000, 9_000, 1_000, 0));
++        Assert.assertFalse(SurfaceEncoder.shouldHardReset(10_000, 0, 8_000, 0));
++        Assert.assertTrue(SurfaceEncoder.shouldHardReset(10_000, 1_000, 1_000, 0));
++        Assert.assertFalse(SurfaceEncoder.shouldHardReset(10_000, 1_000, 1_000, 5_000));
++        Assert.assertTrue(SurfaceEncoder.shouldHardReset(20_000, 1_000, 1_000, 5_000));
++    }
++}

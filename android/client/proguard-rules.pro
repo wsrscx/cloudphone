@@ -1,0 +1,2 @@
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**

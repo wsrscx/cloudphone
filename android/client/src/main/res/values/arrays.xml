@@ -1,0 +1,9 @@
+<resources>
+    <string-array name="quality_modes">
+        <item>@string/quality_auto</item>
+        <item>@string/quality_original</item>
+        <item>@string/quality_1080</item>
+        <item>@string/quality_720</item>
+        <item>@string/quality_smooth</item>
+    </string-array>
+</resources>
